@@ -239,9 +239,27 @@ class Trainer(object):
                                     .all_gather_list
                                     (normalization))
 
+            # LCA: get θ_t
+            lca_params = {k: v.data.clone() for k, v in self.model.named_parameters() if v.requires_grad}
+
+            # single training step; grad = ∇_t, params: θ_{t+1}
             self._gradient_accumulation(
                 batches, normalization, total_stats,
                 report_stats)
+
+            # lca_params = (θ_{t+1} - θ_t) * ∇_t
+            for k, v in self.model.named_parameters():
+                if not v.requires_grad or isinstance(v.grad, type(None)):
+                    continue
+                lca_params[k] = (v.data - lca_params[k]) * v.grad
+
+            # LCA log interval
+            if step % 10000 == 0:
+                for k, v in lca_params.items():
+                    sum = v.sum().item()
+                    mean = v.mean().item()
+                    # figure out a way to log these
+            # /LCA
 
             if self.average_decay > 0 and i % self.average_every == 0:
                 self._update_average(step)
